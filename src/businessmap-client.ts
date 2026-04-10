@@ -6,7 +6,12 @@ import {
   SearchParams, 
   CardCreateParams,
   CardUpdateParams,
-  Board
+  Board,
+  BoardLanes,
+  BoardColumns,
+  BoardWorkflows,
+  BoardStructure,
+  CardCreatedResponse
 } from './types';
 
 export class BusinessmapClient {
@@ -49,25 +54,29 @@ export class BusinessmapClient {
       
       // Filtrar por boards se necessário
       let results = response.data.data || [];
+      if (!Array.isArray(results)) {
+        console.warn('API response data is not an array:', results);
+        results = [];
+      }
       if (this.config.boardsFilter && this.config.boardsFilter.length > 0) {
         results = results.filter((card: any) => 
-          this.config.boardsFilter!.includes(card.board_id.toString())
+          this.config.boardsFilter!.includes(card.board_id?.toString() || '')
         );
       }
       
       // Transformar para o formato esperado
       return results.map((card: any) => ({
-        id: card.id.toString(),
-        title: card.title,
-        description: card.description,
-        boardId: card.board_id.toString(),
-        columnId: card.column_id?.toString(),
-        laneId: card.lane_id?.toString(),
-        priority: card.priority,
-        assigneeIds: card.assignee_ids?.map((id: number) => id.toString()),
-        tags: card.tags,
-        createdAt: card.created_at,
-        updatedAt: card.updated_at
+        id: card.id?.toString() || '',
+        title: card.title || '',
+        description: card.description || '',
+        boardId: card.board_id?.toString() || '',
+        columnId: card.column_id?.toString() || undefined,
+        laneId: card.lane_id?.toString() || undefined,
+        priority: card.priority || undefined,
+        assigneeIds: card.assignee_ids?.map((id: number) => id.toString()) || [],
+        tags: card.tags || [],
+        createdAt: card.created_at || undefined,
+        updatedAt: card.updated_at || undefined
       }));
     } catch (error: any) {
       console.error('Error searching cards:', error.message);
@@ -79,24 +88,21 @@ export class BusinessmapClient {
   async getCard(cardId: string): Promise<Card> {
     try {
       const response = await this.client.get(`/api/v2/cards/${cardId}`);
-      
-      if (response.status !== 200) {
-        throw new Error(`Failed to get card: ${response.statusText}`);
-      }
-      
-      const card = response.data;
+            
+      const card = response.data.data;
       return {
-        id: card.id.toString(),
-        title: card.title,
-        description: card.description,
-        boardId: card.board_id.toString(),
-        columnId: card.column_id?.toString(),
-        laneId: card.lane_id?.toString(),
-        priority: card.priority,
-        assigneeIds: card.assignee_ids?.map((id: number) => id.toString()),
-        tags: card.tags,
-        createdAt: card.created_at,
-        updatedAt: card.updated_at
+        id: card.id?.toString() || cardId,
+        title: card.title || '',
+        description: card.description || '',
+        boardId: card.board_id?.toString() || '',
+        columnId: card.column_id?.toString() || undefined,
+        laneId: card.lane_id?.toString() || undefined,
+        priority: card.priority || undefined,
+        assigneeIds: card.assignee_ids?.map((id: number) => id.toString()) || [],
+        tags: card.tags || [],
+        createdAt: card.created_at || undefined,
+        updatedAt: card.updated_at || undefined,
+        linkedCards: card.linked_cards || []
       };
     } catch (error: any) {
       console.error(`Error getting card ${cardId}:`, error.message);
@@ -105,41 +111,41 @@ export class BusinessmapClient {
   }
   
   // Criar um novo card
-  async createCard(params: CardCreateParams): Promise<Card> {
+  async createCard(params: CardCreateParams): Promise<CardCreatedResponse > {
     this.checkReadOnly('createCard');
     
     try {
-      const response = await this.client.post('/api/v2/cards', {
+      const payload = {
         board_id: params.boardId,
         workflow_id: params.workflowId,
         lane_id: params.laneId,
         column_id: params.columnId,
         title: params.title,
+        type_id: params.typeId,
         description: params.description,
         priority: params.priority,
-        assignee_ids: params.assigneeIds
-      });
-      
-      if (response.status !== 201) {
-        throw new Error(`Failed to create card: ${response.statusText}`);
+        assignee_ids: params.assigneeIds,
+        links_to_existing_cards_to_add_or_update: params.links_to_existing_cards_to_add_or_update?.map((link) => ({
+          linked_card_id: link.card_id,
+          link_type: link.link_type
+        }))
       }
       
-      const card = response.data;
+      const response = await this.client.post('/api/v2/cards', payload);
+      
+      // Verificar se a resposta foi bem-sucedida
+      if (response.status !== 201 && response.status !== 200) {
+        throw new Error(`Failed to create card: ${response.statusText} - ${JSON.stringify(response.data)}`);
+      }
+
+      const cards = response.data.data || [];
+      const card = cards[cards.length - 1];
       return {
-        id: card.id.toString(),
-        title: card.title,
-        description: card.description,
-        boardId: card.board_id.toString(),
-        columnId: card.column_id?.toString(),
-        laneId: card.lane_id?.toString(),
-        priority: card.priority,
-        assigneeIds: card.assignee_ids?.map((id: number) => id.toString()),
-        tags: card.tags,
-        createdAt: card.created_at,
-        updatedAt: card.updated_at
+        id: card.card_id.toString(),
+        link: `${this.config.url}/ctrl_board/${params.boardId}/cards/${card.card_id}/details`
       };
     } catch (error: any) {
-      console.error('Error creating card:', error.message);
+      console.error('Error creating card:', error?.response?.data || error.message);
       throw error;
     }
   }
@@ -243,14 +249,14 @@ export class BusinessmapClient {
       // Filtrar boards se necessário
       if (this.config.boardsFilter && this.config.boardsFilter.length > 0) {
         boards = boards.filter((board: any) => 
-          this.config.boardsFilter!.includes(board.id.toString())
+          this.config.boardsFilter!.includes(board.id?.toString() || '')
         );
       }
       
       return boards.map((board: any) => ({
-        id: board.id.toString(),
-        name: board.name,
-        description: board.description
+        id: board.board_id?.toString() || '',
+        name: board.name || '',
+        description: board.description || ''
       }));
     } catch (error: any) {
       console.error('Error listing boards:', error.message);
@@ -267,14 +273,86 @@ export class BusinessmapClient {
         throw new Error(`Failed to get board: ${response.statusText}`);
       }
       
-      const board = response.data;
+      const board = response.data.data;
       return {
-        id: board.id.toString(),
+        id: board.board_id?.toString() || '',
         name: board.name,
         description: board.description
       };
     } catch (error: any) {
       console.error(`Error getting board ${boardId}:`, error.message);
+      throw error;
+    }
+  }
+  async getBoardLanes(boardId: string): Promise<BoardLanes[]> {
+    try {
+      const response = await this.client.get(`/api/v2/boards/${boardId}/lanes`);
+      
+      if (response.status !== 200) {
+        throw new Error(`Failed to get board: ${response.statusText}`);
+      }
+      
+      const lanes = response.data.data;
+      return lanes.map((lane: any) => ({
+        lane_id: lane.lane_id,
+        name: lane.name,
+        description: lane.description
+      }));
+    } catch (error: any) {
+      console.error(`Error getting board lanes ${boardId}:`, error.message);
+      throw error;
+    }
+  }
+  async getBoardColumns(boardId: string): Promise<BoardColumns[]> {
+    try {
+      const response = await this.client.get(`/api/v2/boards/${boardId}/columns`);
+      if (response.status !== 200) {
+        throw new Error(`Failed to get board columns: ${response.statusText}`);
+      }
+      const columns = response.data.data;
+      return columns.map((column: any) => ({
+        column_id: column.column_id,
+        name: column.name,
+        description: column.description,
+        section: column.section,
+        position: column.position
+      }));
+    } catch (error: any) {
+      console.error(`Error getting board columns ${boardId}:`, error.message);
+      throw error;
+    }
+  }
+  async getBoardWorkflows(boardId: string): Promise<BoardWorkflows[]> {
+    try {
+      const response = await this.client.get(`/api/v2/boards/${boardId}/workflows`);
+      if (response.status !== 200) {
+        throw new Error(`Failed to get board workflows: ${response.statusText}`);
+      }
+      const workflows = response.data.data;
+      return workflows.map((workflow: any) => ({
+        workflow_id: workflow.workflow_id,
+        name: workflow.name,
+        position: workflow.position,
+        is_enabled: workflow.is_enabled
+      }));
+    } catch (error: any) {
+      console.error(`Error getting board workflows ${boardId}:`, error.message);
+      throw error;
+    }
+  }
+
+  // Obter estrutura completa do board
+  async getBoardStructure(boardId: string): Promise<BoardStructure> {
+    try {
+      const response = await this.client.get(`/api/v2/boards/${boardId}/currentStructure`);
+      
+      if (response.status !== 200) {
+        throw new Error(`Failed to get board structure: ${response.statusText}`);
+      }
+      
+      return response.data;
+    } catch (error: any) {
+      console.error(`Error getting board structure ${boardId}:`, error.message);
       throw error;
     }
   }

@@ -2,12 +2,11 @@
 
 import * as dotenv from 'dotenv';
 import minimist from 'minimist';
-import express from 'express';
-import cors from 'cors';
-import http from 'http';
-import { createReadStream, createWriteStream } from 'fs';
+import { Server as McpServer } from '@modelcontextprotocol/sdk/server/index.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { BusinessmapClient } from './businessmap-client';
-import { BusinessmapConfig } from './types';
+import { BusinessmapConfig, CardType, LinkedCard } from './types';
 
 // Carregar variáveis de ambiente do arquivo .env se existir
 dotenv.config();
@@ -19,7 +18,7 @@ const argv = minimist(process.argv.slice(2), {
   default: {
     transport: 'stdio',
     port: '8000',
-    host: '0.0.0.0', // Listen on all interfaces by default
+    host: '0.0.0.0',
     verbose: false,
     'read-only': false,
     'businessmap-ssl-verify': true
@@ -68,389 +67,381 @@ if (config.readOnly) {
   console.log('Running in READ-ONLY mode - all write operations are disabled');
 }
 
-// Definir interface para as ferramentas
-interface Tool {
-  description: string;
-  parameters: {
-    type: string;
-    properties: Record<string, any>;
-    required: string[];
-  };
-  handler: (params: any) => Promise<any>;
-}
-
-// Definição das ferramentas e seus parâmetros
-const tools: Record<string, Tool> = {
-  businessmap_search: {
-    description: 'Search for cards in Businessmap',
-    parameters: {
-      type: 'object',
-      properties: {
-        query: { type: 'string', description: 'Text to search for' },
-        board_ids: { type: 'string', description: 'Comma-separated list of board IDs to search in' },
-        max_results: { type: 'integer', description: 'Maximum number of results to return' }
-      },
-      required: ['query']
-    },
-    handler: async (params: any) => {
-      try {
-        const boardIds = params.board_ids ? params.board_ids.split(',') : undefined;
-        return await businessmapClient.searchCards({ 
-          query: params.query, 
-          boardIds, 
-          maxResults: params.max_results || 50
-        });
-      } catch (error: any) {
-        console.error('Error in businessmap_search:', error.message);
-        return { error: error.message };
-      }
-    }
-  },
-  
-  businessmap_get_card: {
-    description: 'Get a specific card from Businessmap by ID',
-    parameters: {
-      type: 'object',
-      properties: {
-        card_id: { type: 'string', description: 'Card ID to retrieve' }
-      },
-      required: ['card_id']
-    },
-    handler: async (params: any) => {
-      try {
-        return await businessmapClient.getCard(params.card_id);
-      } catch (error: any) {
-        console.error('Error in businessmap_get_card:', error.message);
-        return { error: error.message };
-      }
-    }
-  },
-  
-  businessmap_create_card: {
-    description: 'Create a new card in Businessmap',
-    parameters: {
-      type: 'object',
-      properties: {
-        board_id: { type: 'string', description: 'Board ID' },
-        workflow_id: { type: 'string', description: 'Workflow ID' },
-        lane_id: { type: 'string', description: 'Lane ID' },
-        column_id: { type: 'string', description: 'Column ID' },
-        title: { type: 'string', description: 'Card title' },
-        description: { type: 'string', description: 'Card description' },
-        priority: { type: 'string', description: 'Card priority' },
-        assignee_ids: { type: 'string', description: 'Comma-separated list of assignee IDs' }
-      },
-      required: ['board_id', 'workflow_id', 'lane_id', 'column_id', 'title']
-    },
-    handler: async (params: any) => {
-      try {
-        const assigneeIdsList = params.assignee_ids ? params.assignee_ids.split(',') : undefined;
-        return await businessmapClient.createCard({
-          boardId: params.board_id,
-          workflowId: params.workflow_id,
-          laneId: params.lane_id,
-          columnId: params.column_id,
-          title: params.title,
-          description: params.description,
-          priority: params.priority,
-          assigneeIds: assigneeIdsList
-        });
-      } catch (error: any) {
-        console.error('Error in businessmap_create_card:', error.message);
-        return { error: error.message };
-      }
-    }
-  },
-  
-  businessmap_update_card: {
-    description: 'Update an existing card in Businessmap',
-    parameters: {
-      type: 'object',
-      properties: {
-        card_id: { type: 'string', description: 'Card ID to update' },
-        title: { type: 'string', description: 'New card title' },
-        description: { type: 'string', description: 'New card description' },
-        column_id: { type: 'string', description: 'New column ID' },
-        lane_id: { type: 'string', description: 'New lane ID' },
-        priority: { type: 'string', description: 'New priority' },
-        assignee_ids: { type: 'string', description: 'Comma-separated list of new assignee IDs' }
-      },
-      required: ['card_id']
-    },
-    handler: async (params: any) => {
-      try {
-        const assigneeIdsList = params.assignee_ids ? params.assignee_ids.split(',') : undefined;
-        return await businessmapClient.updateCard({
-          cardId: params.card_id,
-          title: params.title,
-          description: params.description,
-          columnId: params.column_id,
-          laneId: params.lane_id,
-          priority: params.priority,
-          assigneeIds: assigneeIdsList
-        });
-      } catch (error: any) {
-        console.error('Error in businessmap_update_card:', error.message);
-        return { error: error.message };
-      }
-    }
-  },
-  
-  businessmap_delete_card: {
-    description: 'Delete a card from Businessmap',
-    parameters: {
-      type: 'object',
-      properties: {
-        card_id: { type: 'string', description: 'Card ID to delete' }
-      },
-      required: ['card_id']
-    },
-    handler: async (params: any) => {
-      try {
-        return await businessmapClient.deleteCard(params.card_id);
-      } catch (error: any) {
-        console.error('Error in businessmap_delete_card:', error.message);
-        return { error: error.message };
-      }
-    }
-  },
-  
-  businessmap_add_comment: {
-    description: 'Add a comment to a card in Businessmap',
-    parameters: {
-      type: 'object',
-      properties: {
-        card_id: { type: 'string', description: 'Card ID' },
-        text: { type: 'string', description: 'Comment text' }
-      },
-      required: ['card_id', 'text']
-    },
-    handler: async (params: any) => {
-      try {
-        return await businessmapClient.addComment(params.card_id, params.text);
-      } catch (error: any) {
-        console.error('Error in businessmap_add_comment:', error.message);
-        return { error: error.message };
-      }
-    }
+// Criar servidor MCP
+const server = new McpServer({
+  name: 'mcp-businessmap',
+  version: '1.1.5'
+}, {
+  capabilities: {
+    tools: {}
   }
-};
+});
 
-// Implementação simples de um servidor MCP
+// Registrar ferramentas MCP
+server.setRequestHandler(ListToolsRequestSchema, async () => {
+  const tools = [
+    {
+      name: 'businessmap_search',
+      description: 'Search for cards in Businessmap',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'Text to search for' },
+          board_ids: { type: 'string', description: 'Comma-separated list of board IDs to search in' },
+          max_results: { type: 'integer', description: 'Maximum number of results to return' }
+        },
+        required: ['query']
+      }
+    },
+    
+    {
+      name: 'businessmap_get_card',
+      description: 'Get a specific card from Businessmap by ID',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          card_id: { type: 'string', description: 'Card ID to retrieve' }
+        },
+        required: ['card_id']
+      }
+    },
+    
+    {
+      name: 'businessmap_create_card',
+      description: 'Create a new card in Businessmap',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          board_id: { type: 'string', description: 'Board ID' },
+          workflow_id: { type: 'string', description: 'Workflow ID' },
+          lane_id: { type: 'string', description: 'Lane ID' },
+          column_id: { type: 'string', description: 'Column ID' },
+          title: { type: 'string', description: 'Card title' },
+          description: { type: 'string', description: 'Card description' },
+          priority: { type: 'string', description: 'Card priority' },
+          type_id: { type: 'number', description: 'Card type ID' },
+          assignee_ids: { type: 'string', description: 'Comma-separated list of assignee IDs' },
+          links_to_existing_cards_to_add_or_update: { type: 'array', description: 'Array of linked cards', items: { type: 'object', properties: { card_id: { type: 'string', description: 'Card ID' }, link_type: { type: 'string', description: 'Link type' } } } }
+        },
+        required: ['board_id', 'workflow_id', 'lane_id', 'column_id', 'title']
+      }
+    },
+    
+    {
+      name: 'businessmap_update_card',
+      description: 'Update an existing card in Businessmap',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          card_id: { type: 'string', description: 'Card ID to update' },
+          title: { type: 'string', description: 'New card title' },
+          description: { type: 'string', description: 'New card description' },
+          column_id: { type: 'string', description: 'New column ID' },
+          lane_id: { type: 'string', description: 'New lane ID' },
+          priority: { type: 'string', description: 'New priority' },
+          assignee_ids: { type: 'string', description: 'Comma-separated list of new assignee IDs' }
+        },
+        required: ['card_id']
+      }
+    },
+    
+    {
+      name: 'businessmap_delete_card',
+      description: 'Delete a card from Businessmap',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          card_id: { type: 'string', description: 'Card ID to delete' }
+        },
+        required: ['card_id']
+      }
+    },
+    
+    {
+      name: 'businessmap_add_comment',
+      description: 'Add a comment to a card in Businessmap',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          card_id: { type: 'string', description: 'Card ID' },
+          text: { type: 'string', description: 'Comment text' }
+        },
+        required: ['card_id', 'text']
+      }
+    },
+    
+    {
+      name: 'businessmap_list_boards',
+      description: 'List available boards in Businessmap',
+      inputSchema: {
+        type: 'object',
+        properties: {},
+        required: []
+      }
+    },
+    
+    {
+      name: 'businessmap_get_board',
+      description: 'Get details of a specific board',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          board_id: { type: 'string', description: 'Board ID to retrieve' }
+        },
+        required: ['board_id']
+      }
+    },
 
-// Processador de mensagens JSON-RPC para o protocolo MCP
-async function handleJsonRpcRequest(request: any) {
-  // Mensagem para debug
-  if (argv.verbose) {
-    console.debug('Received request:', JSON.stringify(request, null, 2));
-  }
+    {
+      name: 'businessmap_get_board_lanes',
+      description: 'Get lanes of a specific board',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          board_id: { type: 'string', description: 'Board ID to retrieve' }
+        },
+        required: ['board_id']
+      }
+    },
 
-  // Verificar ID e método
-  const id = request.id || null;
-  const method = request.method;
+    {
+      name: 'businessmap_get_board_columns',
+      description: 'Get columns of a specific board',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          board_id: { type: 'string', description: 'Board ID to retrieve' }
+        },
+        required: ['board_id']
+      }
+    },
 
-  // Resposta básica
-  const response: any = {
-    jsonrpc: '2.0',
-    id
-  };
+    {
+      name: 'businessmap_get_board_structure',
+      description: 'Get complete structure of a specific board including workflows, lanes, columns, and configuration',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          board_id: { type: 'string', description: 'Board ID to retrieve structure for' }
+        },
+        required: ['board_id']
+      }
+    }
+  ];
+
+  return { tools };
+});
+
+// Registrar handler para chamadas de ferramentas
+server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  const { name, arguments: args } = request.params;
 
   try {
-    // Processar métodos diferentes
-    if (method === 'mcp.list_tools') {
-      // Listar todas as ferramentas disponíveis
-      response.result = Object.entries(tools).map(([name, tool]) => ({
-        name,
-        description: tool.description,
-        parameters: tool.parameters
-      }));
-    } 
-    else if (method === 'mcp.invoke_tool') {
-      // Invocar uma ferramenta específica
-      const toolName = request.params?.tool as string;
-      const toolParams = request.params?.params || {};
-      
-      // Verificar se a ferramenta existe
-      if (!toolName || !tools[toolName]) {
-        throw { code: -32601, message: `Tool '${toolName}' not found` };
+    switch (name) {
+      case 'businessmap_search': {
+        const boardIds = args?.board_ids ? String(args.board_ids).split(',') : undefined;
+        const result = await businessmapClient.searchCards({ 
+          query: String(args?.query || ''), 
+          boardIds, 
+          maxResults: typeof args?.max_results === 'number' ? args.max_results : 50
+        });
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result, null, 2)
+            }
+          ]
+        };
       }
-      
-      // Executar a ferramenta
-      const tool = tools[toolName];
-      response.result = await tool.handler(toolParams);
-    }
-    else {
-      // Método desconhecido
-      throw { code: -32601, message: `Method '${method}' not found` };
+
+      case 'businessmap_get_card': {
+        const result = await businessmapClient.getCard(String(args?.card_id || ''));
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result, null, 2)
+            }
+          ]
+        };
+      }
+
+      case 'businessmap_create_card': {
+        if (config.readOnly) {
+          throw new Error('Cannot create card in read-only mode');
+        }
+        const assigneeIdsList = args?.assignee_ids ? String(args.assignee_ids).split(',') : undefined;
+        const result = await businessmapClient.createCard({
+          boardId: String(args?.board_id || ''),
+          workflowId: String(args?.workflow_id || ''),
+          laneId: String(args?.lane_id || ''),
+          columnId: String(args?.column_id || ''),
+          title: String(args?.title || ''),
+          typeId: args?.type_id ? Number(args.type_id) : CardType.Story,
+          description: args?.description ? String(args.description) : undefined,
+          priority: args?.priority ? String(args.priority) : undefined,
+          assigneeIds: assigneeIdsList,
+          links_to_existing_cards_to_add_or_update: args?.links_to_existing_cards_to_add_or_update as LinkedCard[]
+        });
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result, null, 2)
+            }
+          ]
+        };
+      }
+
+      case 'businessmap_update_card': {
+        if (config.readOnly) {
+          throw new Error('Cannot update card in read-only mode');
+        }
+        const assigneeIdsList = args?.assignee_ids ? String(args.assignee_ids).split(',') : undefined;
+        const result = await businessmapClient.updateCard({
+          cardId: String(args?.card_id || ''),
+          title: args?.title ? String(args.title) : undefined,
+          description: args?.description ? String(args.description) : undefined,
+          columnId: args?.column_id ? String(args.column_id) : undefined,
+          laneId: args?.lane_id ? String(args.lane_id) : undefined,
+          priority: args?.priority ? String(args.priority) : undefined,
+          assigneeIds: assigneeIdsList
+        });
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result, null, 2)
+            }
+          ]
+        };
+      }
+
+      case 'businessmap_delete_card': {
+        if (config.readOnly) {
+          throw new Error('Cannot delete card in read-only mode');
+        }
+        const result = await businessmapClient.deleteCard(String(args?.card_id || ''));
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result, null, 2)
+            }
+          ]
+        };
+      }
+
+      case 'businessmap_add_comment': {
+        if (config.readOnly) {
+          throw new Error('Cannot add comment in read-only mode');
+        }
+        const result = await businessmapClient.addComment(String(args?.card_id || ''), String(args?.text || ''));
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result, null, 2)
+            }
+          ]
+        };
+      }
+
+      case 'businessmap_list_boards': {
+        const result = await businessmapClient.listBoards();
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result, null, 2)
+            }
+          ]
+        };
+      }
+
+      case 'businessmap_get_board': {
+        const result = await businessmapClient.getBoard(String(args?.board_id || ''));
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result, null, 2)
+            }
+          ]
+        };
+      }
+
+      case 'businessmap_get_board_lanes': {
+        const result = await businessmapClient.getBoardLanes(String(args?.board_id || ''));
+        return {
+          content: [
+            {
+              type: 'text', 
+              text: JSON.stringify(result, null, 2)
+            }
+          ]
+        };
+      }
+
+      case 'businessmap_get_board_columns': {
+        const result = await businessmapClient.getBoardColumns(String(args?.board_id || ''));
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result, null, 2) 
+            }
+          ]
+        };
+      }
+
+      case 'businessmap_get_board_structure': {
+        const result = await businessmapClient.getBoardStructure(String(args?.board_id || ''));
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result, null, 2)
+            }
+          ]
+        };
+      }
+
+      case 'businessmap_get_board_workflows': {
+        const result = await businessmapClient.getBoardWorkflows(String(args?.board_id || ''));
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result, null, 2)
+            }
+          ]
+        };
+      }
+
+      default:
+        throw new Error(`Unknown tool: ${name}`);
     }
   } catch (error: any) {
-    // Formatação de erro seguindo o padrão JSON-RPC
-    response.error = {
-      code: error.code || -32000,
-      message: error.message || 'Unknown error',
-      data: error.data
-    };
+    console.error(`Error in ${name}:`, error.message);
+    throw new Error(`${name} failed: ${error.message}`);
   }
-  
-  // Mensagem para debug
-  if (argv.verbose) {
-    console.debug('Sending response:', JSON.stringify(response, null, 2));
-  }
-  
-  return response;
-}
+});
 
-// Iniciar servidor baseado no transporte escolhido
+// Iniciar servidor
 async function startServer() {
   try {
     if (argv.transport === 'stdio') {
-      // Transporte STDIO
-      
-      // Configurar stdin/stdout
-      process.stdin.setEncoding('utf8');
-      process.stdout.setEncoding('utf8');
-      
-      // Ler linhas da entrada padrão
-      const readline = require('readline');
-      const rl = readline.createInterface({
-        input: process.stdin,
-        output: process.stdout,
-        terminal: false
-      });
-      
-      // Processar cada linha como uma mensagem JSON-RPC
-      rl.on('line', async (line: string) => {
-        try {
-          // Ignorar linhas vazias
-          if (!line.trim()) return;
-          
-          // Processar mensagem JSON-RPC
-          const request = JSON.parse(line);
-          const response = await handleJsonRpcRequest(request);
-          
-          // Enviar resposta
-          console.log(JSON.stringify(response));
-        } catch (error: any) {
-          // Enviar erro de parsing
-          console.error('Error parsing request:', error.message);
-          console.log(JSON.stringify({
-            jsonrpc: '2.0',
-            error: {
-              code: -32700,
-              message: 'Parse error',
-              data: error.message
-            },
-            id: null
-          }));
-        }
-      });
-      
-      // Tratar eventos de erro e fechamento
-      rl.on('close', () => {
-        console.log('STDIO stream closed');
-        process.exit(0);
-      });
-      
-      rl.on('error', (error: Error) => {
-        console.error('STDIO error:', error.message);
-        process.exit(1);
-      });
-      
-      // Avisar que o servidor está pronto
-      console.log('MCP server running in STDIO mode, waiting for input...');
+      // Transporte STDIO - padrão MCP
+      const transport = new StdioServerTransport();
+      await server.connect(transport);
+      console.error('MCP Businessmap server ready in STDIO mode');
     } 
     else if (argv.transport === 'sse') {
-      // Transporte Server-Sent Events (SSE)
-      const app = express();
-      const port = parseInt(argv.port);
-      const host = argv.host;
-      
-      // Middleware para processar JSON
-      app.use(express.json());
-      
-      // Adicionar middleware CORS
-      app.use(cors({
-        origin: '*',
-        methods: ['GET', 'POST', 'OPTIONS'],
-        allowedHeaders: ['Content-Type', 'Authorization']
-      }));
-      
-      // Opções para CORS preflight
-      app.options('*', cors());
-      
-      // Endpoint para envio de eventos
-      app.get('/sse', (req, res) => {
-        // Log de conexão recebida
-        console.log('SSE connection received from:', req.ip);
-        
-        // Headers SSE corretos
-        res.setHeader('Content-Type', 'text/event-stream');
-        res.setHeader('Connection', 'keep-alive');
-        res.setHeader('Cache-Control', 'no-cache');
-        res.setHeader('Access-Control-Allow-Origin', '*');
-        
-        // Status 200 para iniciar o stream
-        res.status(200);
-        
-        // Enviar evento de conexão
-        res.write('event: connected\ndata: {}\n\n');
-        
-        // Adicionar cliente à lista
-        const clientId = Date.now();
-        sseClients.set(clientId, res);
-        
-        // Manter conexão com heartbeat
-        const heartbeat = setInterval(() => {
-          res.write(':\n\n');
-        }, 30000);
-        
-        // Remover cliente quando a conexão for fechada
-        req.on('close', () => {
-          console.log('SSE connection closed for client:', clientId);
-          clearInterval(heartbeat);
-          sseClients.delete(clientId);
-        });
-      });
-      
-      // Armazenar clientes SSE
-      const sseClients = new Map();
-      
-      // Função para enviar eventos para todos os clientes
-      const sendSseEvent = (event: string, data: any) => {
-        const message = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-        for (const client of sseClients.values()) {
-          client.write(message);
-        }
-      };
-      
-      // Endpoint JSON-RPC
-      app.post('/json-rpc', async (req, res) => {
-        try {
-          console.log('JSON-RPC request received:', req.ip);
-          const response = await handleJsonRpcRequest(req.body);
-          res.json(response);
-        } catch (error: any) {
-          console.error('Error handling JSON-RPC request:', error);
-          res.status(500).json({
-            jsonrpc: '2.0',
-            error: {
-              code: -32000,
-              message: error.message || 'Unknown error'
-            },
-            id: req.body.id || null
-          });
-        }
-      });
-      
-      // Endpoint de verificação de saúde
-      app.get('/health', (req, res) => {
-        res.status(200).json({ status: 'ok' });
-      });
-      
-      // Iniciar servidor HTTP
-      app.listen(port, host, () => {
-        console.log(`MCP server running in SSE mode on ${host}:${port}`);
-      });
+      // Para SSE, você pode implementar um transport customizado
+      // ou usar HTTP transport da SDK se disponível
+      throw new Error('SSE transport not yet implemented with SDK. Use stdio transport for now.');
     } 
     else {
       throw new Error(`Unsupported transport: ${argv.transport}`);
@@ -466,3 +457,4 @@ startServer().catch(error => {
   console.error('Failed to start MCP server:', error);
   process.exit(1);
 }); 
+

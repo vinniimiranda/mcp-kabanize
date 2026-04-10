@@ -1,165 +1,238 @@
-# MCP-Businessmap
+# MCP Businessmap Server
 
-MCP Server para o Businessmap (Kanbanize), permitindo buscar, visualizar e gerenciar quadros e cartões.
+Um servidor MCP (Model Context Protocol) para integração com a API do Businessmap (Kanbanize).
 
-## Ferramentas
+## Funcionalidades
 
-O MCP-Businessmap fornece as seguintes ferramentas para interação com o Businessmap:
+### Cards
+- **businessmap_search**: Buscar cards no Businessmap
+- **businessmap_get_card**: Obter detalhes de um card específico
+- **businessmap_create_card**: Criar um novo card
+- **businessmap_update_card**: Atualizar um card existente
+- **businessmap_delete_card**: Excluir um card
+- **businessmap_add_comment**: Adicionar comentário a um card
 
-1. `businessmap_search`: Busca por cartões no Businessmap.
-   - Parâmetros obrigatórios:
-     - `query`: Texto para buscar
-   - Parâmetros opcionais:
-     - `board_ids`: Lista de IDs de quadros (separados por vírgula)
-     - `max_results`: Número máximo de resultados
+### Boards
+- **businessmap_list_boards**: Listar quadros disponíveis
+- **businessmap_get_board**: Obter detalhes de um quadro específico
+- **businessmap_get_board_lanes**: Obter lanes de um quadro específico
+- **businessmap_get_board_columns**: Obter colunas de um quadro específico
+- **businessmap_get_board_workflows**: Obter workflows de um quadro específico
+- **businessmap_get_board_structure**: Obter estrutura completa de um quadro
 
-2. `businessmap_get_card`: Obtém detalhes de um cartão específico.
-   - Parâmetros obrigatórios:
-     - `card_id`: ID do cartão
+## Nova Funcionalidade: businessmap_get_board_structure
 
-3. `businessmap_create_card`: Cria um novo cartão.
-   - Parâmetros obrigatórios:
-     - `board_id`: ID do quadro
-     - `workflow_id`: ID do workflow
-     - `lane_id`: ID da lane
-     - `column_id`: ID da coluna
-     - `title`: Título do cartão
-   - Parâmetros opcionais:
-     - `description`: Descrição do cartão
-     - `priority`: Prioridade do cartão
-     - `assignee_ids`: IDs dos responsáveis (separados por vírgula)
+A tool `businessmap_get_board_structure` permite recuperar a estrutura completa de um board, incluindo:
 
-4. `businessmap_update_card`: Atualiza um cartão existente.
-   - Parâmetros obrigatórios:
-     - `card_id`: ID do cartão
-   - Parâmetros opcionais:
-     - `title`: Novo título
-     - `description`: Nova descrição
-     - `column_id`: Nova coluna
-     - `lane_id`: Nova lane
-     - `priority`: Nova prioridade
-     - `assignee_ids`: Novos responsáveis (separados por vírgula)
+- **Informações básicas do board**: ID, nome, descrição, versão, etc.
+- **Workflows**: Configuração completa dos workflows do board
+- **Lanes**: Todas as lanes disponíveis com suas configurações
+- **Columns**: Todas as colunas com suas propriedades e configurações
+- **Child Columns**: Relacionamentos entre colunas pai e filho
+- **Checklist Items**: Itens de checklist associados às colunas
+- **Configurações avançadas**: Limites, fórmulas, ordenação, etc.
 
-5. `businessmap_delete_card`: Remove um cartão.
-   - Parâmetros obrigatórios:
-     - `card_id`: ID do cartão
+### Uso
 
-6. `businessmap_add_comment`: Adiciona um comentário a um cartão.
-   - Parâmetros obrigatórios:
-     - `card_id`: ID do cartão
-     - `text`: Texto do comentário
+```json
+{
+  "name": "businessmap_get_board_structure",
+  "arguments": {
+    "board_id": "1090"
+  }
+}
+```
 
-## Requisitos
+### Resposta
 
-- Node.js 14+
-- Acesso a uma instância do Businessmap/Kanbanize
-- API key do Businessmap
+A resposta inclui toda a estrutura do board conforme a API do Businessmap:
+
+```json
+{
+  "data": {
+    "version": "1.0",
+    "workspace_id": 727,
+    "board_id": 1090,
+    "name": "Simple board",
+    "workflows": { ... },
+    "lanes": { ... },
+    "columns": { ... },
+    "child_columns": { ... },
+    "column_checklist_items": { ... },
+    "cell_card_orderings": { ... },
+    "cell_limits": { ... },
+    "merged_areas": { ... },
+    "revision": 27
+  }
+}
+```
+
+### Tipos TypeScript
+
+Foram criadas interfaces TypeScript completas para tipagem da estrutura:
+
+- `BoardStructure`: Estrutura completa do board
+- `WorkflowStructure`: Configuração de workflow
+- `LaneStructure`: Configuração de lane
+- `ColumnStructure`: Configuração de coluna
+- `ChecklistItemStructure`: Item de checklist
+- `MergedAreaStructure`: Área mesclada
+
+## Características
+
+- ✅ **SDK Oficial MCP**: Usa a SDK oficial do Model Context Protocol
+- ✅ Protocolo MCP padrão implementado
+- ✅ Suporte a transporte STDIO (padrão MCP)
+- ✅ Modo somente leitura para segurança
+- ✅ Filtros de quadros configuráveis
+- ✅ Tratamento de erros robusto
+- ✅ Logging detalhado
+- ✅ Tipagem TypeScript completa
+
+## Ferramentas Disponíveis
+
+### Cards
+- `businessmap_search` - Buscar cards por texto
+- `businessmap_get_card` - Obter detalhes de um card específico
+- `businessmap_create_card` - Criar novo card
+- `businessmap_update_card` - Atualizar card existente
+- `businessmap_delete_card` - Excluir card
+- `businessmap_add_comment` - Adicionar comentário a um card
+
+### Quadros
+- `businessmap_list_boards` - Listar quadros disponíveis
+- `businessmap_get_board` - Obter detalhes de um quadro específico
 
 ## Instalação
 
 ```bash
-npm install -g mcp-businessmap
+npm install
+npm run build
+```
+
+## Configuração
+
+### Variáveis de Ambiente
+
+```bash
+# Obrigatórias
+BUSINESSMAP_URL=https://your-instance.kanbanize.com
+BUSINESSMAP_APIKEY=YOUR_API_KEY
+
+# Opcionais
+BUSINESSMAP_BOARDS_FILTER=1,2,3  # IDs dos quadros permitidos
+READ_ONLY_MODE=true              # Modo somente leitura
+```
+
+### Argumentos de Linha de Comando
+
+```bash
+# Básico
+node dist/index.js --businessmap-url=https://your-instance.kanbanize.com --businessmap-apikey=YOUR_API_KEY
+
+# Com opções
+node dist/index.js \
+  --businessmap-url=https://your-instance.kanbanize.com \
+  --businessmap-apikey=YOUR_API_KEY \
+  --businessmap-boards-filter=1,2,3 \
+  --read-only \
+  --verbose \
+  --transport=stdio
 ```
 
 ## Uso
 
-### Como executável
+### Modo STDIO (Padrão MCP)
 
 ```bash
-mcp-businessmap --transport=stdio --businessmap-url=https://your-instance.businessmap.io --businessmap-apikey=YOUR_API_KEY
+node dist/index.js --transport=stdio
 ```
 
-### Como servidor HTTP/SSE
+### Modo STDIO (Recomendado)
 
 ```bash
-mcp-businessmap --transport=sse --port=8000 --host=0.0.0.0 --businessmap-url=https://your-instance.businessmap.io --businessmap-apikey=YOUR_API_KEY
+node dist/index.js --transport=stdio
 ```
 
-## Opções
+> **Nota**: O transporte SSE foi removido na versão atual. Use o transporte STDIO que é o padrão do protocolo MCP.
 
-- `--transport`: Protocolo de transporte (`stdio` ou `sse`). Padrão: `stdio`
-- `--port`: Porta para o servidor HTTP (apenas para o transporte `sse`). Padrão: `8000`
-- `--host`: Host para o servidor HTTP (apenas para o transporte `sse`). Padrão: `0.0.0.0`
-- `--businessmap-url`: URL da sua instância do Businessmap.
-- `--businessmap-apikey`: Chave de API do Businessmap.
-- `--businessmap-boards-filter`: Lista de IDs de quadros para filtrar (separados por vírgula).
-- `--read-only`: Modo somente leitura (desativa operações de escrita). Padrão: `false`
-- `--businessmap-ssl-verify`: Verificar certificados SSL. Padrão: `true`
-- `--verbose`: Logs detalhados. Padrão: `false`
+## Integração com Clientes MCP
 
-## Variáveis de ambiente
+### Configuração do Cliente
 
-Em vez de passar argumentos na linha de comando, você pode usar variáveis de ambiente:
+Adicione ao seu arquivo de configuração MCP:
 
-- `BUSINESSMAP_URL`: URL da sua instância do Businessmap.
-- `BUSINESSMAP_APIKEY`: Chave de API do Businessmap.
-- `BUSINESSMAP_BOARDS_FILTER`: Lista de IDs de quadros para filtrar (separados por vírgula).
-- `READ_ONLY_MODE`: Modo somente leitura (`true` ou `false`).
+```json
+{
+  "mcpServers": {
+    "businessmap": {
+      "command": "node",
+      "args": ["/path/to/dist/index.js"],
+      "env": {
+        "BUSINESSMAP_URL": "https://your-instance.kanbanize.com",
+        "BUSINESSMAP_APIKEY": "YOUR_API_KEY"
+      }
+    }
+  }
+}
+```
 
-## Uso com n8n
+### Exemplo de Uso com Claude Desktop
 
-Para usar o MCP-Businessmap com o n8n:
-
-1. Instale o pacote mcp-businessmap globalmente no servidor onde o n8n está rodando:
-   ```bash
-   npm install -g mcp-businessmap
-   ```
-
-2. Inicie o MCP como um servidor HTTP/SSE:
-   ```bash
-   mcp-businessmap --transport=sse --port=8001 --host=0.0.0.0 --businessmap-url=https://your-instance.businessmap.io --businessmap-apikey=YOUR_API_KEY --verbose
-   ```
-
-3. No n8n, adicione uma nova credencial:
-   - Tipo: MCP Client (MCP Server)
-   - SSE URL: `http://your-server-ip:8001/sse`
-   - Messages Post Endpoint: `http://your-server-ip:8001/json-rpc`
-
-4. Agora você pode usar o nó MCP nos seus workflows para interagir com o Businessmap.
-
-## Melhorias para compatibilidade com n8n
-
-Versão 1.1.5 traz as seguintes melhorias para compatibilidade com n8n:
-
-- Suporte completo a CORS para evitar problemas de conexão
-- Escuta em todas as interfaces de rede por padrão
-- Implementação SSE mais robusta com heartbeat a cada 30 segundos
-- Logs detalhados para ajudar no diagnóstico de problemas
-- Endpoint de verificação de saúde para monitoramento
-- Tratamento de erros aprimorado
-- Correção de problemas de compatibilidade com Docker e ambientes isolados
+1. Configure o servidor no arquivo `claude_desktop_config.json`
+2. Reinicie o Claude Desktop
+3. Use as ferramentas disponíveis através do protocolo MCP
 
 ## Desenvolvimento
 
-### Clonar o repositório
-
 ```bash
-git clone https://github.com/rlopes2-ops/-MCP-Businessmap.git
-cd -MCP-Businessmap
-```
+# Modo desenvolvimento
+npm run dev
 
-### Instalar dependências
-
-```bash
-npm install
-```
-
-### Executar em modo de desenvolvimento
-
-```bash
-npm run dev -- --transport=sse --port=8000 --businessmap-url=https://your-instance.businessmap.io --businessmap-apikey=YOUR_API_KEY
-```
-
-### Compilar
-
-```bash
+# Build
 npm run build
+
+# Executar build
+npm start
+```
+
+## Mudanças na Versão Atual
+
+Esta versão foi refatorada para usar a **SDK oficial do MCP**, oferecendo:
+
+- **Melhor compatibilidade** com o protocolo MCP
+- **Tipagem TypeScript** mais robusta
+- **Tratamento de erros** aprimorado
+- **Código mais limpo** e manutenível
+- **Compatibilidade total** com a API anterior
+
+Veja `example-usage.md` para exemplos detalhados de uso.
+
+## Segurança
+
+- Use sempre HTTPS para a URL do Businessmap
+- Configure filtros de quadros para limitar acesso
+- Use modo somente leitura quando apropriado
+- Mantenha suas chaves de API seguras
+
+## Troubleshooting
+
+### Erro de Conexão
+- Verifique se a URL do Businessmap está correta
+- Confirme se a chave de API é válida
+- Teste a conectividade de rede
+
+### Erro de Permissão
+- Verifique se a chave de API tem permissões adequadas
+- Confirme se os quadros estão acessíveis
+
+### Logs Detalhados
+Use a flag `--verbose` para obter logs detalhados:
+
+```bash
+node dist/index.js --verbose
 ```
 
 ## Licença
 
-MIT
-
-## Disclaimer
-
-Businessmap e Kanbanize são marcas registradas de seus respectivos proprietários. Este projeto não está relacionado oficialmente à Kanbanize ou suas subsidiárias. 
+MIT License - veja o arquivo LICENSE para detalhes. 

@@ -4,16 +4,16 @@
   "description": "MCP Server for Businessmap (Kanbanize)",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "bin": {
-    "mcp-businessmap": "./bin/mcp-businessmap"
-  },
   "scripts": {
     "dev": "ts-node src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
+    "test": "node test-mcp.js",
+    "test:sdk": "node test-sdk.js",
+    "test:connectivity": "node test-connectivity.js",
+    "prepublishOnly": "npm run build",
     "build:docker": "smith build --build-arg NPM_TOKEN=${NPM_TOKEN}",
-    "deploy:docker": "smith deploy",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "deploy:docker": "smith deploy"
   },
   "keywords": [
     "mcp",
@@ -24,6 +24,7 @@
     "n8n"
   ],
   "files": [
+    "bin",
     "dist",
     "README.md",
     "LICENSE"
@@ -39,13 +40,15 @@
     "node": ">=14.0.0"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.17.1",
     "axios": "^1.6.7",
     "commander": "^11.1.0",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
     "jsonrpc-lite": "^2.2.0",
-    "minimist": "^1.2.8"
+    "minimist": "^1.2.8",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",

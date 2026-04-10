@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "businessmap": {
+      "command": "node",
+      "args": ["/path/to/your/mcp-businessmap/dist/index.js"],
+      "env": {
+        "BUSINESSMAP_URL": "https://your-instance.kanbanize.com",
+        "BUSINESSMAP_APIKEY": "YOUR_API_KEY_HERE",
+        "BUSINESSMAP_BOARDS_FILTER": "1,2,3",
+        "READ_ONLY_MODE": "false"
+      }
+    }
+  }
+} 

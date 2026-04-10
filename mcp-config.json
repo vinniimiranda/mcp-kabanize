@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "businessmap": {
+      "command": "node",
+      "args": ["dist/index.js"],
+      "env": {
+        "BUSINESSMAP_URL": "https://airfox.businessmap.io",
+        "BUSINESSMAP_APIKEY": "<your-api-key>",
+        "BUSINESSMAP_BOARDS_FILTER": "",
+        "READ_ONLY_MODE": "false",
+        "VERBOSE": "true"
+      }
+    }
+  }
+} 
